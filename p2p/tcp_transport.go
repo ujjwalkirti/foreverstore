@@ -3,7 +3,6 @@ package p2p
 import (
 	"fmt"
 	"net"
-	"sync"
 )
 
 type TCPPeer struct {
@@ -27,14 +26,13 @@ type TCPTransportOpts struct {
 	ListenAddress string
 	ShakeHandFunc ShakeHandFunc
 	Decoder       Decoder
+	OnPeer        func(Peer) error
 }
 
 type TCPTransport struct {
 	TCPTransportOpts
 	listener net.Listener
 	rpcchan  chan RPC
-
-	mu sync.RWMutex
 }
 
 func NewTCPTransport(opts TCPTransportOpts) *TCPTransport {
@@ -72,12 +70,28 @@ func (t *TCPTransport) startAcceptLoop() {
 }
 
 func (t *TCPTransport) handleConn(conn net.Conn) {
-	// peer := NewTCPPeer(conn, true)
-	if err := t.ShakeHandFunc(conn); err != nil {
+	var err error
+
+	defer func() {
+		fmt.Printf("dropping peer connection: %s", err)
 		conn.Close()
-		fmt.Printf("TCP handshake error: %s\n", err)
+	}()
+
+	peer := NewTCPPeer(conn, true)
+
+	if err := t.ShakeHandFunc(peer); err != nil {
 		return
 	}
+
+	if t.OnPeer != nil {
+		err = t.OnPeer(peer)
+
+		if err != nil {
+			return
+		}
+	}
+
+	// Read loop
 	rpc := RPC{}
 	for {
 		err := t.Decoder.Decode(conn, &rpc)
@@ -86,7 +100,6 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 			continue
 		}
 		rpc.From = conn.RemoteAddr()
-
 		t.rpcchan <- rpc
 
 	}
