@@ -7,8 +7,8 @@ import (
 	"github.com/ujjwalkirti/foreverstore/p2p"
 )
 
-func OnPeer(p2p.Peer) error {
-	fmt.Println("doing some logic with the peer outside od TCPTransport")
+func OnPeer(peer p2p.Peer) error {
+	peer.Close()
 	return nil
 }
 func main() {
